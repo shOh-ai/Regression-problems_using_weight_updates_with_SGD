@@ -4,3 +4,5 @@ Python code for 'resolving regression problems using weight updates via SGD' wit
 Data: iris_data
 
 Goal: classification
+
+Powered by 'R'
