@@ -5,4 +5,6 @@ Data: iris_data
 
 Goal: classification
 
+Code: All code required by the classification model architecture, such as partial differential equations for gradient updates in the Stochastic gradient gradient gradient (SGD), is written BY own without using the neural network Python tool function.
+
 Powered by 'R'
