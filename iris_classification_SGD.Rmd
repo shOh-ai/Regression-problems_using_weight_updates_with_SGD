@@ -1,0 +1,211 @@
+---
+title: "iris_data_classification_report"
+author: "seunghun_Oh"
+date: "2022-10-28"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r}
+setwd("/Users/sh_oh/Dropbox/iris")
+```
+
+```{r}
+# 1.데이터읽기 및 수동 One-Hot Encoding, 데이터 설정
+
+iris = read.csv(file = "iris.csv", stringsAsFactors = TRUE)
+
+iris$Species.setosa[iris$Species=="setosa"]=	1
+iris$Species.setosa[iris$Species!="setosa"]=	0
+iris$Species.versicolor[iris$Species=="versicolor"]=	1
+iris$Species.versicolor[iris$Species!="versicolor"]=	0
+iris$Species.virginica[iris$Species=="virginica"]=	1
+iris$Species.virginica[iris$Species!="virginica"]=	0
+
+x	<-	matrix(c(iris$Sepal.Length,	iris$Sepal.Width, iris$Petal.Length,iris$Petal.Width), nrow=150)
+x
+
+y	<-	matrix(c(iris$Species.setosa,	iris$Species.versicolor,	iris$Species.virginica), nrow=150)
+y
+```
+
+```{r}
+# 2.데이터분리(생략): 훈련데이터와 테스트데이터를 나누지 않음
+```
+
+```{r}
+# 3. 활성화함수 설정
+ # activation_finction1-(tau: sigmoid): 입력층 -> 은닉층
+ # activation_finction2-(softmax: softmax): 은닉층 -> 출력층
+ # tau1d: tau의 일계도함수
+
+tau	<-	function(x)	1/(1	+	exp(-x))	
+tau1d	<-	function(x)	tau(x)*(1	-	tau(x)) 
+
+softmax	<-	function(x)	{
+  nDim	=	length(x)
+  res	=	rep(0,	nDim)
+  res	=	matrix(res,	nrow	=	nrow(x),	byrow	=	FALSE)
+  
+  ExpMatr <- matrix(0, nrow(x), ncol(x))
+  SumExpMatr <- rep(0, nrow(x))
+  for	(k	in	1:ncol(x))	{
+    for	(h	in	1:nrow(x))	{
+      ExpMatr[h, k]	=	exp(x[h, k])
+    }
+    SumExpMatr[k] <- sum(ExpMatr[,k])
+  }
+  
+  for	(i	in	1:nrow(x))	{
+    for	(j	in	1:ncol(x))	{
+      res[i,j]	=	exp(x[i,j])/SumExpMatr[j]
+    }
+  }
+  return(res)
+}
+```
+
+
+```{r}
+# 4.인공신경망(NN) 모형학습-SGD Version
+
+SGD.NN1 <-	function(X,	Y,	hidden, rho = NULL, tol = NULL, max.epoch = NULL)
+{
+  set.seed(123)
+  X <- as.matrix(X)
+  Y <- as.matrix(Y)
+  n	<-	nrow(X)
+  d	<-	ncol(X)
+  
+  if (is.null(rho)) rho <- 1/n
+  if (is.null(max.epoch)) max.epoch <- 500
+  if (is.null(tol)) tol <- 5e-6
+  
+  ones	<-	rep(1,	n)
+  
+  # 난수 발생하여(rnorm) W1, W2 초기값 설정(출력층의 Node수: 3)
+  
+  W1	<-	matrix(rnorm(hidden*(d	+	1)),	hidden,	d	+	1)
+  W2	<-	matrix(rnorm(3*(hidden	+	1)),	3,	hidden	+	1)
+  
+  # Permute the data set & while문 설정
+  
+  epoch	<-	0
+  loss.trace	<-	rep(NA,	max.epoch)
+  
+  while	(epoch	<	max.epoch)	{
+    epoch	<-	epoch	+	1
+    ind	<-	sample(1:n,	n,	replace	=	FALSE)
+    
+    # 가중치 업데이트를 위한 matrix 틀 설정
+    
+    X.tr	<-	as.matrix(X[ind,])
+    Y.tr	<-	as.matrix(Y[ind,])
+    Y.tilde	<-	matrix(0,n,3)
+    
+    x <- matrix(0,n,d+1)
+    s <- matrix(0,n,hidden)
+    z <- matrix(0,hidden+1,n)
+    
+    for	(	i	in	1:n	)	{
+      x[i,]	<-	c(1,	X.tr[i,])
+      s[i,] <-  drop(W1%*%x[i,])
+      z[,i]	<-	c(1 ,tau(s[i,]))
+    }
+    gr1.sum	<-	matrix(0,	hidden,	d	+	1)
+    gr2.sum	<-	matrix(0,	3, hidden	+	1)
+    
+    # 오차 역전파를 통한 가중치 업데이트 및 softmax를 이용한 최종 출력값 Y.tilde 출력
+    
+    Y.tilde	<-	softmax(W2%*%z)
+    delta	<-	t(Y.tr)	-	Y.tilde
+    gr2	<-	delta%*%matrix(z,	n, hidden	+	1)
+    gr2.sum	<-	gr2.sum	+	gr2
+    W2	<-	W2	+	rho*gr2
+    
+    gr1 <- matrix(0, hidden, d + 1)
+    eta.k <- matrix(0, hidden, 1)
+    for	(	k	in	1 : hidden	)	{
+      eta.k[k,]	<-	sum(t(delta)%*%W2[,	k	+	1]%*%tau1d(s[,k]))
+      for	(	j	in	1:(d	+	1)	)	{
+        gr1[,j]	<-	eta.k[k,]*x[j]
+        gr1.sum[k,	j]	<-	gr1.sum[k,	j]	+	gr1[k, j]
+        W1[k,	j]	<-	W1[k,	j]	+	rho*gr1[k, j]
+      }
+    }
+        loss.trace[epoch]	<-	(-1)*sum(Y%*%log(Y.tilde))
+  }
+  
+  # 분류 문제이므로 손실함수로 cross-entropy를 이용 및 결측치 제거
+    
+  loss.trace	<-	na.omit(loss.trace)
+  
+  return(list(W1 = W1, W2	=	W2,	Z	=	z, y.pred	=	Y.tilde, loss	=	loss.trace,	epoch	=	epoch))
+}
+
+```
+
+```{r}
+
+# 5. 모델 성능 평가 with confusion_matrix & ROC curve
+
+SGD <- SGD.NN1(X=x, Y=y, hidden=15, rho =0.001 , tol = 4e-4, max.epoch = 890)
+
+
+ # confusionMatrix()에 factor값을 넣기 위해 자료의 형태 변환-1: 실제값
+
+  factor.y <- rep(0, nrow(y))
+  for(i in 1:nrow(y)){
+    for(j in 1:ncol(y)){
+     if( y[i,j]==1 ){ factor.y[i]<- j-1}
+    }
+  }
+  factor.y 
+  
+  # confusionMatrix()에 factor값을 넣기 위해 자료의 형태 변환-2: 예측값 
+  
+  factor.ypred <- t(SGD$y.pred)
+  for( i in 1:nrow(factor.ypred)) {
+    for( j in 1:ncol(factor.ypred)){
+      if( factor.ypred[i,j]==max(factor.ypred[i,]) ){factor.ypred[i,j]<- 1}
+      else{factor.ypred[i,j]<-0}
+    }
+  }
+  factor.ypred <- as.matrix(factor.ypred)
+  factor.ypred
+
+  predf.y <- rep(0, nrow(factor.ypred))
+  for(i in 1:nrow(factor.ypred)){
+   for(j in 1:ncol(factor.ypred)){
+     if( factor.ypred[i,j]==1 ){ predf.y[i]<- j-1}
+   }
+  }
+  predf.y
+
+ # confusionMatrix(혼동행렬) 계산
+
+ library(caret)
+ confusionMatrix(as.factor(predf.y), as.factor(factor.y))
+
+ # ROC Curve 그리기
+  #install.packages("pROC")
+ 
+ library(pROC)
+ iris.roc <- roc(predf.y, factor.y)
+ plot.roc(iris.roc,
+         
+         col='black', # 선의 색
+
+         print.auc=TRUE,  #auc 출력
+         
+         print.auc.col='red', #auc 색
+         
+         print.thres=TRUE, # theshold 출력 
+         
+         print.thres.pch=19, #theshold 점 모양
+         
+         print.thres.col = "red", #threhold 색
+         
+         grid=c(0.2, 0.2)) #격자
+```
